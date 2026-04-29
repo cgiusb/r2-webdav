@@ -732,17 +732,21 @@ async function handle_get(request: Request, bucket: R2Bucket): Promise<Response>
 		for await (const object of listAll(bucket, prefix)) {
 			if (object.key === resource_path) {
 				continue;
-// --- 修改开始 ---
-  let isDir = object.customMetadata?.resourcetype === "<collection />" || object.key.endsWith('/');
-  let displayName = object.httpMetadata?.contentDisposition ?? object.key.slice(prefix.length);
-  
-  // 如果是目录，强制加上斜杠并显示图标
-  let href = getResourceHref(object.key, isDir);
-  let icon = isDir ? "📁 " : "📄 ";
-  
-  page += `<a href="${escapeXml(href)}">${icon}${escapeXml(displayName)}</a><br>`;
-  // --- 修改结束 ---
+			}
+			
+			// --- 修改开始 ---
+			// 增加对目录的判断逻辑：1. 元数据包含 collection 2. key 以斜杠结尾
+			let isDir = object.customMetadata?.resourcetype === "<collection />" || object.key.endsWith('/');
+			let displayName = object.httpMetadata?.contentDisposition ?? object.key.slice(prefix.length);
+			
+			// 生成带图标的链接
+			let href = getResourceHref(object.key, isDir);
+			let icon = isDir ? "📁 " : "📄 ";
+			
+			page += `<a href="${escapeXml(href)}">${icon}${escapeXml(displayName)}</a><br>`;
+			// --- 修改结束 ---
 		}
+
 		// 定义模板
 		var pageSource = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>R2Storage</title><style>*{box-sizing:border-box;}body{padding:10px;font-family:'Segoe UI','Circular','Roboto','Lato','Helvetica Neue','Arial Rounded MT Bold','sans-serif';}a{display:inline-block;width:100%;color:#000;text-decoration:none;padding:5px 10px;cursor:pointer;border-radius:5px;}a:hover{background-color:#60C590;color:white;}a[href="../"]{background-color:#cbd5e1;}</style></head><body><h1>R2 Storage</h1><div>${page}</div></body></html>`;
 
@@ -750,7 +754,9 @@ async function handle_get(request: Request, bucket: R2Bucket): Promise<Response>
 			status: 200,
 			headers: { 'Content-Type': 'text/html; charset=utf-8' },
 		});
+
 	} else {
+		// 这里是原本的 else 块，现在括号已经正确对应
 		let object = await bucket.get(resource_path, {
 			onlyIf: request.headers,
 			range: request.headers,
@@ -778,50 +784,32 @@ async function handle_get(request: Request, bucket: R2Bucket): Promise<Response>
 					...(object.httpMetadata?.contentDisposition
 						? {
 								'Content-Disposition': object.httpMetadata.contentDisposition,
-							}
+						  }
 						: {}),
 					...(object.httpMetadata?.contentEncoding
 						? {
 								'Content-Encoding': object.httpMetadata.contentEncoding,
-							}
+						  }
 						: {}),
 					...(object.httpMetadata?.contentLanguage
 						? {
 								'Content-Language': object.httpMetadata.contentLanguage,
-							}
+						  }
 						: {}),
 					...(object.httpMetadata?.cacheControl
 						? {
 								'Cache-Control': object.httpMetadata.cacheControl,
-							}
+						  }
 						: {}),
 					...(object.httpMetadata?.cacheExpiry
 						? {
 								'Cache-Expiry': object.httpMetadata.cacheExpiry.toISOString(),
-							}
+						  }
 						: {}),
 				},
 			});
 		}
 	}
-}
-
-function calcContentRange(object: R2ObjectBody) {
-	let rangeOffset = 0;
-	let rangeEnd = object.size - 1;
-	if (object.range) {
-		if ('suffix' in object.range) {
-			// Case 3: {suffix: number}
-			rangeOffset = object.size - object.range.suffix;
-		} else {
-			// Case 1: {offset: number, length?: number}
-			// Case 2: {offset?: number, length: number}
-			rangeOffset = object.range.offset ?? 0;
-			let length = object.range.length ?? object.size - rangeOffset;
-			rangeEnd = Math.min(rangeOffset + length - 1, object.size - 1);
-		}
-	}
-	return { rangeOffset, rangeEnd };
 }
 
 async function handle_put(request: Request, bucket: R2Bucket): Promise<Response> {
